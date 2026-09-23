@@ -1,0 +1,47 @@
+name: modushield
+
+services:
+  demo-api:
+    build:
+      context: ..
+      dockerfile: infra/demo-api.Dockerfile
+    environment:
+      SERVER_PORT: 8081
+    expose:
+      - "8081"
+    networks:
+      - back-network
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: infra/gateway.Dockerfile
+    environment:
+      SERVER_PORT: 8080
+      DEMO_API_URL: http://demo-api:8081
+      MODUSHIELD_API_KEY: ${MODUSHIELD_API_KEY:?Set MODUSHIELD_API_KEY in .env}
+      MAX_REQUEST_SIZE_BYTES: ${MAX_REQUEST_SIZE_BYTES:-8192}
+      RATE_LIMIT_CAPACITY: ${RATE_LIMIT_CAPACITY:-5}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-10}
+    depends_on:
+      - demo-api
+    ports:
+      - "8080:8080"
+    networks:
+      - front-network
+      - back-network
+    restart: unless-stopped
+
+  client-tests:
+    image: curlimages/curl:8.12.1
+    profiles:
+      - tools
+    entrypoint: ["curl"]
+    networks:
+      - front-network
+
+networks:
+  front-network:
+  back-network:
+    internal: true

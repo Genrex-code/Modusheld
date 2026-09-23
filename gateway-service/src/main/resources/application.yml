@@ -1,0 +1,32 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: modushield-gateway
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 5s
+      routes:
+        - id: demo-api
+          uri: ${DEMO_API_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/**
+
+management:
+  endpoints:
+    web:
+      base-path: /
+      exposure:
+        include: health,info
+      path-mapping:
+        health: health
+  endpoint:
+    health:
+      show-details: never
+
+modushield:
+  access:
+    api-key: ${MODUSHIELD_API_KEY:}

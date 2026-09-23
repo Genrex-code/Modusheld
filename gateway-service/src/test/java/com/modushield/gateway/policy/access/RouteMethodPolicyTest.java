@@ -10,6 +10,8 @@ import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.web.server.ServerWebExchange;
 
+import java.net.URI;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -77,6 +79,9 @@ class RouteMethodPolicyTest {
     }
 
     private ServerWebExchange exchangeFor(HttpMethod method, String path) {
-        return MockServerWebExchange.from(MockServerHttpRequest.method(method, path).build());
+        // The URI overload preserves raw separators and escapes so the policy
+        // is tested against what a real HTTP server receives.
+        return MockServerWebExchange.from(
+                MockServerHttpRequest.method(method, URI.create(path)).build());
     }
 }

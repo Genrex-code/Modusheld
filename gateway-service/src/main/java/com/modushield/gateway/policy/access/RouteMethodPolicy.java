@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -41,9 +40,9 @@ import java.util.Set;
 public class RouteMethodPolicy implements GlobalFilter, Ordered, GatewayPolicy {
 
     private static final Map<String, Set<HttpMethod>> ALLOWLIST = Map.of(
-            "/health", EnumSet.of(HttpMethod.GET),
-            "/api/products", EnumSet.of(HttpMethod.GET),
-            "/api/orders", EnumSet.of(HttpMethod.POST)
+            "/health", Set.of(HttpMethod.GET),
+            "/api/products", Set.of(HttpMethod.GET),
+            "/api/orders", Set.of(HttpMethod.POST)
     );
 
     private final ErrorResponseWriter errorResponseWriter;
@@ -70,7 +69,9 @@ public class RouteMethodPolicy implements GlobalFilter, Ordered, GatewayPolicy {
     @Override
     public PolicyDecision evaluate(ServerWebExchange exchange) {
         ServerHttpRequest request = exchange.getRequest();
-        String rawPath = request.getPath().value();
+        // Inspect the raw URI before Spring's path representation can collapse
+        // repeated separators or otherwise hide an ambiguous input.
+        String rawPath = request.getURI().getRawPath();
 
         if (isAmbiguous(rawPath)) {
             return routeNotAllowed();

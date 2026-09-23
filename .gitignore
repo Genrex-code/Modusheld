@@ -1,0 +1,28 @@
+# Maven
+target/
+**/target/
+.mvn/timing.properties
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE and operating system
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
+Thumbs.db
+
+# Runtime output and evidence generated locally
+*.log
+__pycache__/
+*.py[cod]
+docs/evidence/*
+!docs/evidence/.gitkeep

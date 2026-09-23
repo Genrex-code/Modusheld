@@ -5,11 +5,7 @@ import com.modushield.gateway.policy.PolicyDecision;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-/**
- * Doble de prueba para ErrorResponseWriter. SOLO para pruebas unitarias de Access
- * mientras Java A - Nucleo publica la implementacion real (que arma el JSON del
- * contrato: timestamp, status, error, message, path, requestId). No usar en produccion.
- */
+/** Test double for isolated Access unit tests. Never used in production. */
 public class NoOpErrorResponseWriter implements ErrorResponseWriter {
 
     private PolicyDecision lastDecision;

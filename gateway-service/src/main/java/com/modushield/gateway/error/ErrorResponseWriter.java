@@ -5,9 +5,8 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 /**
- * Contrato compartido (plan maestro seccion 6.1 / manual seccion 5.2).
- * La IMPLEMENTACION real (el JSON exacto: timestamp, status, error, message, path, requestId)
- * la construye Java A - Nucleo. Access solo depende de esta interfaz.
+ * Shared rejection contract. Policies depend on this interface and the Core
+ * implementation {@link JsonErrorResponseWriter} owns the public JSON shape.
  */
 public interface ErrorResponseWriter {
 
