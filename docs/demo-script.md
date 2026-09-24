@@ -1,5 +1,8 @@
 # Guion de demostracion
 
+Las aserciones y los contratos completos de entrada/salida estan definidos en
+[presentation-contracts.md](presentation-contracts.md).
+
 ## Preparacion
 
 ```bash

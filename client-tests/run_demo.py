@@ -432,7 +432,19 @@ def git_revision(repo_dir: Path) -> str:
         text=True,
         check=False,
     )
-    return result.stdout.strip() if result.returncode == 0 else "unknown"
+    if result.returncode != 0:
+        return "unknown"
+
+    revision = result.stdout.strip()
+    worktree = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    dirty = worktree.returncode == 0 and bool(worktree.stdout.strip())
+    return f"{revision}-dirty" if dirty else revision
 
 
 def parse_args(argv: Iterable[str]) -> argparse.Namespace:

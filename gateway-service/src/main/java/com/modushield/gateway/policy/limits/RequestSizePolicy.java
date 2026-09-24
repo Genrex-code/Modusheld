@@ -1,20 +1,28 @@
 package com.modushield.gateway.policy.limits;
 
+import com.modushield.gateway.error.ErrorResponseWriter;
 import com.modushield.gateway.policy.GatewayPolicy;
 import com.modushield.gateway.policy.PolicyDecision;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
+/** Rejects unverifiable or oversized request bodies before routing upstream. */
 @Component
-public class RequestSizePolicy implements GatewayPolicy {
+public class RequestSizePolicy implements GlobalFilter, Ordered, GatewayPolicy {
 
+    private static final int ORDER = 50;
     private static final Set<HttpMethod> BODY_METHODS = Set.of(
             HttpMethod.POST,
             HttpMethod.PUT,
@@ -22,14 +30,34 @@ public class RequestSizePolicy implements GatewayPolicy {
     );
 
     private final long maxSizeBytes;
+    private final ErrorResponseWriter errorResponseWriter;
 
     public RequestSizePolicy(
-            @Value("${modushield.limits.max-request-size-bytes:8192}") long maxSizeBytes
+            @Value("${modushield.limits.max-request-size-bytes:8192}") long maxSizeBytes,
+            ErrorResponseWriter errorResponseWriter
     ) {
         if (maxSizeBytes <= 0) {
             throw new IllegalArgumentException("maxSizeBytes must be greater than zero");
         }
         this.maxSizeBytes = maxSizeBytes;
+        this.errorResponseWriter = Objects.requireNonNull(
+                errorResponseWriter,
+                "errorResponseWriter"
+        );
+    }
+
+    @Override
+    public int getOrder() {
+        return ORDER;
+    }
+
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        PolicyDecision decision = evaluate(exchange);
+        if (!decision.allowed()) {
+            return errorResponseWriter.write(exchange, decision);
+        }
+        return chain.filter(exchange);
     }
 
     @Override

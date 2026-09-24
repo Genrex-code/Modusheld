@@ -1,18 +1,28 @@
 package com.modushield.gateway.policy.limits;
 
+import com.modushield.gateway.error.ErrorResponseWriter;
 import com.modushield.gateway.policy.PolicyDecision;
 import org.junit.jupiter.api.Test;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class RequestSizePolicyTest {
 
-    private final RequestSizePolicy policy = new RequestSizePolicy(8192L);
+    private final ErrorResponseWriter writer = mock(ErrorResponseWriter.class);
+    private final RequestSizePolicy policy = new RequestSizePolicy(8192L, writer);
 
     @Test
     void allowsTheExact8192ByteBoundary() {
@@ -104,9 +114,37 @@ class RequestSizePolicyTest {
     }
 
     @Test
+    void filterContinuesOnlyWhenTheSizePolicyAllows() {
+        MockServerWebExchange exchange = exchange(MockServerHttpRequest.get("/api/products"));
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+        when(chain.filter(exchange)).thenReturn(Mono.empty());
+
+        StepVerifier.create(policy.filter(exchange, chain)).verifyComplete();
+
+        verify(chain).filter(exchange);
+        verify(writer, never()).write(any(), any());
+        assertThat(policy.getOrder()).isEqualTo(50);
+    }
+
+    @Test
+    void filterUsesTheSharedWriterForARejectedRequest() {
+        MockServerWebExchange exchange = exchange(
+                MockServerHttpRequest.post("/api/orders")
+                        .header(HttpHeaders.CONTENT_LENGTH, "8193")
+        );
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+        when(writer.write(any(), any())).thenReturn(Mono.empty());
+
+        StepVerifier.create(policy.filter(exchange, chain)).verifyComplete();
+
+        verify(writer).write(exchange, policy.evaluate(exchange));
+        verify(chain, never()).filter(any());
+    }
+
+    @Test
     void rejectsInvalidConfiguration() {
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> new RequestSizePolicy(0));
+                .isThrownBy(() -> new RequestSizePolicy(0, writer));
     }
 
     private MockServerWebExchange exchange(MockServerHttpRequest.BaseBuilder<?> request) {

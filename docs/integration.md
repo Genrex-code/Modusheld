@@ -7,7 +7,8 @@
 - La entrega D aporta `demo-api` y la auditoria reactiva del gateway.
 - El contrato `ErrorResponseWriter` de B tiene una implementacion unica, `JsonErrorResponseWriter`, compatible con `PolicyDecision`.
 - El POM raiz fija Java 17, Spring Boot 3.4.5 y Spring Cloud 2024.0.1.
-- Infraestructura y E2E fueron validados con Docker; pasan 10/12 escenarios y E07/E09 quedan pendientes de la entrega C.
+- Las politicas de C estan integradas como filtros con orden 50 para tamano y 60 para tasa.
+- Infraestructura y E2E fueron validados con Docker; pasan los 12 escenarios obligatorios.
 
 ## Ajustes hechos al integrar A
 
@@ -20,16 +21,19 @@
 
 La carpeta original de A no fue modificada y `target/` no se copio.
 
-## Contrato para recibir C
+## Integracion de C
 
-C debe agregar sus clases bajo:
+C quedo integrada bajo:
 
 ```text
 gateway-service/src/main/java/com/modushield/gateway/policy/limits/
 gateway-service/src/test/java/com/modushield/gateway/policy/limits/
 ```
 
-Debe usar `ErrorResponseWriter` y `PolicyDecision`, propiedades con prefijo `modushield.limits`, orden 50 para tamano, orden 60 para tasa y pruebas deterministas para 8192/8193 bytes y solicitudes 1-6.
+Ambas politicas implementan `GatewayPolicy`, `GlobalFilter` y `Ordered`. Usan el
+`ErrorResponseWriter` y `PolicyDecision` compartidos, propiedades con prefijo
+`modushield.limits`, orden 50 para tamano, orden 60 para tasa y pruebas
+deterministas para 8192/8193 bytes y solicitudes 1-6.
 
 ## Ajustes hechos al integrar D
 

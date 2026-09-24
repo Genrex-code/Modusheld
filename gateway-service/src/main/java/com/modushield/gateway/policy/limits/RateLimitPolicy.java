@@ -1,11 +1,17 @@
 package com.modushield.gateway.policy.limits;
 
+import com.modushield.gateway.error.ErrorResponseWriter;
 import com.modushield.gateway.policy.GatewayPolicy;
 import com.modushield.gateway.policy.PolicyDecision;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -14,29 +20,40 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+/** Fixed-window, in-memory request limiter for the single-instance demo. */
 @Component
-public class RateLimitPolicy implements GatewayPolicy {
+public class RateLimitPolicy implements GlobalFilter, Ordered, GatewayPolicy {
 
+    private static final int ORDER = 60;
     private static final String API_KEY_HEADER = "X-API-Key";
 
     private final int capacity;
     private final long windowSeconds;
     private final Clock clock;
+    private final ErrorResponseWriter errorResponseWriter;
     private final Map<String, UserBucket> buckets = new ConcurrentHashMap<>();
     private final AtomicLong nextCleanupEpochSecond;
 
+    @Autowired
     public RateLimitPolicy(
             @Value("${modushield.limits.rate-limit-capacity:5}") int capacity,
-            @Value("${modushield.limits.rate-limit-window-seconds:10}") long windowSeconds
+            @Value("${modushield.limits.rate-limit-window-seconds:10}") long windowSeconds,
+            ErrorResponseWriter errorResponseWriter
     ) {
-        this(capacity, windowSeconds, Clock.systemUTC());
+        this(capacity, windowSeconds, Clock.systemUTC(), errorResponseWriter);
     }
 
-    RateLimitPolicy(int capacity, long windowSeconds, Clock clock) {
+    RateLimitPolicy(
+            int capacity,
+            long windowSeconds,
+            Clock clock,
+            ErrorResponseWriter errorResponseWriter
+    ) {
         if (capacity <= 0) {
             throw new IllegalArgumentException("capacity must be greater than zero");
         }
@@ -45,8 +62,26 @@ public class RateLimitPolicy implements GatewayPolicy {
         }
         this.capacity = capacity;
         this.windowSeconds = windowSeconds;
-        this.clock = clock;
+        this.clock = Objects.requireNonNull(clock, "clock");
+        this.errorResponseWriter = Objects.requireNonNull(
+                errorResponseWriter,
+                "errorResponseWriter"
+        );
         this.nextCleanupEpochSecond = new AtomicLong(now() + windowSeconds);
+    }
+
+    @Override
+    public int getOrder() {
+        return ORDER;
+    }
+
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        PolicyDecision decision = evaluate(exchange);
+        if (!decision.allowed()) {
+            return errorResponseWriter.write(exchange, decision);
+        }
+        return chain.filter(exchange);
     }
 
     @Override

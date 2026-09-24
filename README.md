@@ -9,11 +9,12 @@ ModuShield es un prototipo academico de API Gateway de seguridad construido con 
 | Estructura Maven y contratos comunes | Integrado | Jairo / Core |
 | Routing, request ID y errores 500/502 | Integrado a partir de la entrega A | Java A |
 | API key, rutas y metodos | Integrado con pruebas unitarias | Java B |
-| Tamano maximo y rate limit | Pendiente de integrar | Java C |
+| Tamano maximo y rate limit | Integrado con pruebas unitarias | Java C |
 | Demo API y auditoria | Integrado con pruebas | Java D |
-| Docker, E2E y documentacion | Validado en Docker: 10/12; E07 y E09 esperan C | Jairo |
+| Docker, E2E y documentacion | Validado en Docker: 12/12 | Jairo |
 
-No se debe marcar E01-E12 como aprobado hasta integrar C y guardar una ejecucion real.
+La matriz E01-E12 fue aprobada en Docker despues de integrar C. Se debe repetir
+la corrida y guardar evidencia al preparar el commit o tag definitivo.
 
 ## Requisitos
 
@@ -58,7 +59,7 @@ Para ejecutar E01-E09 sin detener contenedores ni inspeccionar redes/logs:
 python client-tests/run_demo.py --http-only
 ```
 
-La corrida completa ejecuta E01-E12, detiene y vuelve a iniciar `demo-api` durante E10, valida el aislamiento en E11 e inspecciona la auditoria en E12. Cada corrida guarda un JSON sin secretos en `docs/evidence/` y devuelve codigo distinto de cero si existe un fallo. E07 y E09 quedaran aprobados al integrar Limits (C); E08 ya valida el borde permitido de 8192 bytes.
+La corrida completa ejecuta E01-E12, detiene y vuelve a iniciar `demo-api` durante E10, valida el aislamiento en E11 e inspecciona la auditoria en E12. Cada corrida guarda un JSON sin secretos en `docs/evidence/` y devuelve codigo distinto de cero si existe un fallo. E07 valida la sexta solicitud con 429; E08/E09 validan los bordes de 8192/8193 bytes.
 
 ## Contratos que no deben cambiarse sin acuerdo
 
@@ -69,4 +70,4 @@ La corrida completa ejecuta E01-E12, detiene y vuelve a iniciar `demo-api` duran
 - JSON de error: `timestamp`, `status`, `error`, `message`, `path`, `requestId`.
 - Limites: 8192 bytes y cinco solicitudes por diez segundos por identidad.
 
-Consulta [arquitectura](docs/architecture.md), [politicas](docs/policies.md), [estado de integracion](docs/integration.md) y [guion de demostracion](docs/demo-script.md).
+Consulta [arquitectura](docs/architecture.md), [politicas](docs/policies.md), [estado de integracion](docs/integration.md), [contratos para scripts de presentacion](docs/presentation-contracts.md) y [guion de demostracion](docs/demo-script.md).

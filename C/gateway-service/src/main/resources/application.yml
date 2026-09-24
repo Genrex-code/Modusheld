@@ -1,0 +1,5 @@
+modushield:
+  limits:
+    max-request-size-bytes: ${MAX_REQUEST_SIZE_BYTES:8192}
+    rate-limit-capacity: ${RATE_LIMIT_CAPACITY:5}
+    rate-limit-window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:10}
