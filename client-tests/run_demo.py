@@ -213,6 +213,21 @@ class Runner:
             print(f"[INFO] Waiting {wait}s for an isolated rate-limit window...")
             time.sleep(wait)
 
+    def wait_for_gateway(self, timeout_seconds: float = 30.0) -> bool:
+        print("[INFO] Waiting for the gateway to become ready...")
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            result = request(
+                self.args.base_url,
+                "GET",
+                "/health",
+                timeout=2.0,
+            )
+            if result.status == 200:
+                return True
+            time.sleep(1.0)
+        return False
+
     def wait_for_upstream(self, timeout_seconds: float = 20.0) -> bool:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
@@ -231,6 +246,9 @@ class Runner:
     def run_http_scenarios(self) -> None:
         base_url = self.args.base_url
         api_key = self.args.api_key
+
+        if not self.wait_for_gateway():
+            print("[WARN] Gateway did not become ready before the scenario timeout.")
 
         self.check_http("E01", "health", request(base_url, "GET", "/health"), 200)
         self.check_http(

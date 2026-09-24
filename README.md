@@ -11,7 +11,7 @@ ModuShield es un prototipo academico de API Gateway de seguridad construido con 
 | API key, rutas y metodos | Integrado con pruebas unitarias | Java B |
 | Tamano maximo y rate limit | Pendiente de integrar | Java C |
 | Demo API y auditoria | Integrado con pruebas | Java D |
-| Docker, E2E y documentacion | Preparado; la ejecucion completa espera C | Jairo |
+| Docker, E2E y documentacion | Validado en Docker: 10/12; E07 y E09 esperan C | Jairo |
 
 No se debe marcar E01-E12 como aprobado hasta integrar C y guardar una ejecucion real.
 
@@ -58,7 +58,7 @@ Para ejecutar E01-E09 sin detener contenedores ni inspeccionar redes/logs:
 python client-tests/run_demo.py --http-only
 ```
 
-La corrida completa ejecuta E01-E12, detiene y vuelve a iniciar `demo-api` durante E10, valida el aislamiento en E11 e inspecciona la auditoria en E12. Cada corrida guarda un JSON sin secretos en `docs/evidence/` y devuelve codigo distinto de cero si existe un fallo. E07-E09 quedaran disponibles al integrar Limits (C).
+La corrida completa ejecuta E01-E12, detiene y vuelve a iniciar `demo-api` durante E10, valida el aislamiento en E11 e inspecciona la auditoria en E12. Cada corrida guarda un JSON sin secretos en `docs/evidence/` y devuelve codigo distinto de cero si existe un fallo. E07 y E09 quedaran aprobados al integrar Limits (C); E08 ya valida el borde permitido de 8192 bytes.
 
 ## Contratos que no deben cambiarse sin acuerdo
 

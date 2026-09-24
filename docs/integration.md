@@ -7,7 +7,7 @@
 - La entrega D aporta `demo-api` y la auditoria reactiva del gateway.
 - El contrato `ErrorResponseWriter` de B tiene una implementacion unica, `JsonErrorResponseWriter`, compatible con `PolicyDecision`.
 - El POM raiz fija Java 17, Spring Boot 3.4.5 y Spring Cloud 2024.0.1.
-- Infraestructura y E2E estan preparados; la matriz completa queda pendiente de la entrega C.
+- Infraestructura y E2E fueron validados con Docker; pasan 10/12 escenarios y E07/E09 quedan pendientes de la entrega C.
 
 ## Ajustes hechos al integrar A
 
