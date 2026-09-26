@@ -8,7 +8,7 @@ ModuShield es un prototipo academico de API Gateway de seguridad construido con 
 |---|---|---|
 | Estructura Maven y contratos comunes | Integrado | Jairo / Core |
 | Routing, request ID y errores 500/502 | Integrado a partir de la entrega A | Java A |
-| API key, rutas y metodos | Integrado con pruebas unitarias | Java B |
+| JWT, usuarios, roles, rutas y metodos | Integrado con pruebas unitarias | Java B |
 | Tamano maximo y rate limit | Integrado con pruebas unitarias | Java C |
 | Demo API y auditoria | Integrado con pruebas | Java D |
 | Docker, E2E y documentacion | Validado en Docker: 12/12 | Jairo |
@@ -38,7 +38,10 @@ Copy-Item .env.example .env
 .\mvnw.cmd clean test
 ```
 
-La clave de `.env` es local y nunca debe subirse al repositorio.
+Antes de iniciar Docker, reemplaza todos los placeholders de `.env`. `JWT_SECRET`
+debe tener por lo menos 32 bytes; por ejemplo, puedes generar uno con
+`openssl rand -base64 48`. El secreto JWT y la contrasena del administrador son
+locales y nunca deben subirse al repositorio.
 
 ## Ejecucion con Docker
 
@@ -50,6 +53,31 @@ docker compose -f infra/docker-compose.yml --env-file .env down
 ```
 
 El host publica unicamente `localhost:8080`. `demo-api:8081` existe solo en `back-network`; si `localhost:8081` responde, el aislamiento esta mal configurado.
+
+## Autenticacion y productos
+
+Registro y login se realizan en el gateway. Los usuarios registrados reciben el
+rol `USER`; el usuario `ADMIN` se crea al arrancar a partir de `ADMIN_USERNAME` y
+`ADMIN_PASSWORD`. Las contrasenas se conservan como hashes BCrypt y los usuarios
+registrados viven en memoria durante la ejecucion del gateway.
+
+```bash
+curl -X POST http://localhost:8080/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"reader","password":"change-this-password"}'
+
+curl -X POST http://localhost:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"reader","password":"change-this-password"}'
+
+curl http://localhost:8080/api/products \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Un `USER` puede ejecutar `GET /api/products` y `GET /api/products/{id}`. El
+`ADMIN` tambien puede ejecutar `POST /api/products`, `PUT /api/products/{id}` y
+`DELETE /api/products/{id}`. Tokens ausentes, invalidos, alterados o vencidos
+reciben `401`; una escritura intentada por un `USER` recibe `403`.
 
 ## Pruebas durante la integracion
 
@@ -63,10 +91,10 @@ La corrida completa ejecuta E01-E12, detiene y vuelve a iniciar `demo-api` duran
 
 ## Contratos que no deben cambiarse sin acuerdo
 
-- Header de identidad: `X-API-Key`.
+- Productos: `Authorization: Bearer <JWT>`; ordenes heredadas conservan `X-API-Key`.
 - Correlacion: `X-Request-Id` en solicitud reenviada y respuesta.
-- Rutas permitidas: `GET /health`, `GET /api/products`, `POST /api/orders`.
-- Errores: `401 INVALID_API_KEY`, `403 ROUTE_NOT_ALLOWED`, `405 METHOD_NOT_ALLOWED`, `413 PAYLOAD_TOO_LARGE`, `429 RATE_LIMIT_EXCEEDED`, `502 UPSTREAM_UNAVAILABLE` y `500 INTERNAL_GATEWAY_ERROR`.
+- Rutas de producto: GET de coleccion/elemento para `USER`; CRUD completo para `ADMIN`.
+- Errores JWT: `401 INVALID_TOKEN` y `403 INSUFFICIENT_PERMISSIONS`.
 - JSON de error: `timestamp`, `status`, `error`, `message`, `path`, `requestId`.
 - Limites: 8192 bytes y cinco solicitudes por diez segundos por identidad.
 

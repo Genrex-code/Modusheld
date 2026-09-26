@@ -30,6 +30,11 @@ management:
 modushield:
   access:
     api-key: ${MODUSHIELD_API_KEY:}
+  auth:
+    jwt-secret: ${JWT_SECRET:}
+    jwt-expiration-seconds: ${JWT_EXPIRATION_SECONDS:3600}
+    admin-username: ${ADMIN_USERNAME:}
+    admin-password: ${ADMIN_PASSWORD:}
   limits:
     max-request-size-bytes: ${MAX_REQUEST_SIZE_BYTES:8192}
     rate-limit-capacity: ${RATE_LIMIT_CAPACITY:5}

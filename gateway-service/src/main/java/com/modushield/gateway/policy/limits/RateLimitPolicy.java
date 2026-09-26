@@ -122,6 +122,10 @@ public class RateLimitPolicy implements GlobalFilter, Ordered, GatewayPolicy {
     }
 
     private String clientIdentity(ServerWebExchange exchange) {
+        String authenticatedUser = exchange.getRequest().getHeaders().getFirst("X-Authenticated-User");
+        if (authenticatedUser != null && !authenticatedUser.isBlank()) {
+            return "user:" + authenticatedUser;
+        }
         String apiKey = exchange.getRequest().getHeaders().getFirst(API_KEY_HEADER);
         if (apiKey != null && !apiKey.isBlank()) {
             return "api-key:" + apiKey;
