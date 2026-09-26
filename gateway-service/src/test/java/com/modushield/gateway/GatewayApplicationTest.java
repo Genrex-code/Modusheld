@@ -98,6 +98,50 @@ class GatewayApplicationTest {
                 .jsonPath("$.expiresAt").isNotEmpty();
     }
 
+    @Test
+    void rejectsInvalidLoginAndRegistrationContracts() {
+        webTestClient.post()
+                .uri("/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"username\":\"missing-user\",\"password\":\"wrong-password\"}")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(401)
+                .jsonPath("$.error").isEqualTo("INVALID_CREDENTIALS");
+
+        webTestClient.post()
+                .uri("/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"username\":\"x\",\"password\":\"secure-pass-123\"}")
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(400)
+                .jsonPath("$.error").isEqualTo("INVALID_REGISTRATION");
+    }
+
+    @Test
+    void rejectsDuplicateRegistration() {
+        String body = "{\"username\":\"duplicate-user\",\"password\":\"secure-pass-123\"}";
+        webTestClient.post()
+                .uri("/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .exchange()
+                .expectStatus().isCreated();
+
+        webTestClient.post()
+                .uri("/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .exchange()
+                .expectStatus().isEqualTo(409)
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(409)
+                .jsonPath("$.error").isEqualTo("USERNAME_EXISTS");
+    }
+
     private String adminToken() {
         byte[] body = webTestClient.post()
                 .uri("/auth/login")

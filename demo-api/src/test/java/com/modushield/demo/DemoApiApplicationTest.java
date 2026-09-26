@@ -102,6 +102,36 @@ class DemoApiApplicationTest {
     }
 
     @Test
+    void rejectsInvalidAndConflictingProducts() throws Exception {
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":\"bad/id\",\"name\":\"Invalid\",\"stock\":1}"))
+                .andExpect(status().isBadRequest());
+
+        String existing = "{\"id\":\"P-100\",\"name\":\"Duplicate\",\"stock\":1}";
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(existing))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void rejectsInvalidOrMissingProductUpdatesAndDeletes() throws Exception {
+        mockMvc.perform(put("/api/products/P-100")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":\"P-200\",\"name\":\"Mismatch\",\"stock\":1}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(put("/api/products/P-MISSING")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":\"P-MISSING\",\"name\":\"Missing\",\"stock\":1}"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(delete("/api/products/P-MISSING"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void invalidOrderIsRejected() throws Exception {
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
