@@ -33,7 +33,7 @@ class ApiKeyFilterTest {
 
     @Test
     void permiteSolicitudConClaveValida() {
-        ServerWebExchange exchange = exchangeFor(HttpMethod.GET, "/api/products", VALID_KEY);
+        ServerWebExchange exchange = exchangeFor(HttpMethod.POST, "/api/orders", VALID_KEY);
 
         PolicyDecision decision = apiKeyFilter.evaluate(exchange);
 
@@ -42,7 +42,7 @@ class ApiKeyFilterTest {
 
     @Test
     void rechazaSolicitudSinClave() {
-        ServerWebExchange exchange = exchangeFor(HttpMethod.GET, "/api/products", null);
+        ServerWebExchange exchange = exchangeFor(HttpMethod.POST, "/api/orders", null);
 
         PolicyDecision decision = apiKeyFilter.evaluate(exchange);
 
@@ -53,7 +53,7 @@ class ApiKeyFilterTest {
 
     @Test
     void rechazaSolicitudConClaveIncorrecta() {
-        ServerWebExchange exchange = exchangeFor(HttpMethod.GET, "/api/products", "clave-equivocada");
+        ServerWebExchange exchange = exchangeFor(HttpMethod.POST, "/api/orders", "clave-equivocada");
 
         PolicyDecision decision = apiKeyFilter.evaluate(exchange);
 
@@ -74,7 +74,7 @@ class ApiKeyFilterTest {
     @Test
     void rechazaSiHayMasDeUnaCabeceraApiKey() {
         ServerWebExchange exchange = MockServerWebExchange.from(
-                MockServerHttpRequest.method(HttpMethod.GET, "/api/products")
+                MockServerHttpRequest.method(HttpMethod.POST, "/api/orders")
                         .header("X-API-Key", VALID_KEY)
                         .header("X-API-Key", "otra-clave")
                         .build());
@@ -92,6 +92,14 @@ class ApiKeyFilterTest {
 
         assertThatThrownBy(() -> new ApiKeyFilter(emptyProperties, new NoOpErrorResponseWriter()))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void productosUsanJwtYEstanExentosDeApiKey() {
+        PolicyDecision decision = apiKeyFilter.evaluate(
+                exchangeFor(HttpMethod.GET, "/api/products/P-100", null));
+
+        assertThat(decision.allowed()).isTrue();
     }
 
     @Test

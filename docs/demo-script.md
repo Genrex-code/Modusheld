@@ -22,7 +22,7 @@ Antes de presentar, comprobar que `demo-api` no muestra un puerto del host y que
 2. Ejecutar la matriz completa:
 
    ```bash
-   python client-tests/run_demo.py
+   python client-tests/run_demo.py       #python3 client-tests/run_demo.py para MacOS
    ```
 
 3. Destacar E02 (proxy 200), E03 (401), E05 (403), E06 (405), E07 (429), E09 (413), E10 (502), E11 (aislamiento) y E12 (auditoria sin secreto).

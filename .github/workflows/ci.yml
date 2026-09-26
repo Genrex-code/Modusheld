@@ -1,23 +1,193 @@
-name: build
+name: CI and test deployment
 
 on:
   pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: modushield-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  quality-and-e2e:
+    name: Test, coverage, package, and E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: modushield-ci-${{ github.run_id }}
+      RATE_LIMIT_WINDOW_SECONDS: "10"
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17 with Maven cache
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
           cache: maven
-      - name: Run tests
+
+      - name: Run JUnit 5 tests and JaCoCo 80% quality gate
         run: ./mvnw --batch-mode --no-transfer-progress clean test
+
+      - name: Publish coverage summary
+        shell: bash
+        run: |
+          calculate_coverage() {
+            awk -F, 'NR > 1 { missed += $8; covered += $9 } END { printf "%.2f", 100 * covered / (covered + missed) }' "$1"
+          }
+          gateway_coverage=$(calculate_coverage gateway-service/target/site/jacoco/jacoco.csv)
+          demo_coverage=$(calculate_coverage demo-api/target/site/jacoco/jacoco.csv)
+          {
+            echo "## JaCoCo line coverage"
+            echo "| Module | Coverage | Required |"
+            echo "|---|---:|---:|"
+            echo "| gateway-service | ${gateway_coverage}% | 80% |"
+            echo "| demo-api | ${demo_coverage}% | 80% |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Package application
+        run: ./mvnw --batch-mode --no-transfer-progress -DskipTests -Djacoco.skip=true package
+
+      - name: Upload JaCoCo reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports-${{ github.run_id }}
+          path: |
+            gateway-service/target/site/jacoco/
+            demo-api/target/site/jacoco/
+          if-no-files-found: error
+
+      - name: Generate ephemeral CI credentials
+        shell: bash
+        run: |
+          echo "MODUSHIELD_API_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "JWT_SECRET=$(openssl rand -hex 48)" >> "$GITHUB_ENV"
+          echo "ADMIN_USERNAME=ci-admin-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "ADMIN_PASSWORD=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Build Docker images
+        run: docker compose -f infra/docker-compose.yml build
+
+      - name: Start isolated Docker Compose environment
+        id: compose_up
+        run: docker compose -f infra/docker-compose.yml up -d --no-build
+
+      - name: Wait for gateway readiness
+        shell: bash
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:8080/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker compose -f infra/docker-compose.yml ps
+          docker compose -f infra/docker-compose.yml logs --no-color
+          exit 1
+
+      - name: Run E01-E12
+        run: python3 client-tests/run_demo.py
+
+      - name: Capture Docker logs after failure
+        if: failure() && steps.compose_up.outcome != 'skipped'
+        run: docker compose -f infra/docker-compose.yml logs --no-color > docker-compose.log
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-evidence-${{ github.run_id }}
+          path: |
+            docs/evidence/*.json
+            docker-compose.log
+          if-no-files-found: warn
+
+      - name: Tear down isolated environment
+        if: always() && steps.compose_up.outcome != 'skipped'
+        run: docker compose -f infra/docker-compose.yml down --volumes --remove-orphans
+
+  deploy-test:
+    name: Deploy dedicated test environment
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality-and-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: test
+    env:
+      TEST_HOST: ${{ secrets.TEST_HOST }}
+      TEST_USER: ${{ secrets.TEST_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.TEST_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.TEST_SSH_KNOWN_HOSTS }}
+      DEPLOY_PATH: ${{ vars.TEST_DEPLOY_PATH }}
+      JWT_SECRET: ${{ secrets.TEST_JWT_SECRET }}
+      ADMIN_USERNAME: ${{ secrets.TEST_ADMIN_USERNAME }}
+      ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+      MODUSHIELD_API_KEY: ${{ secrets.TEST_MODUSHIELD_API_KEY }}
+
+    steps:
+      - name: Check out validated revision
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          required=(TEST_HOST TEST_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS DEPLOY_PATH JWT_SECRET ADMIN_USERNAME ADMIN_PASSWORD MODUSHIELD_API_KEY)
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "Required test-environment secret is missing: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare SSH and deployment bundle
+        shell: bash
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          git archive --format=tar.gz --output="/tmp/modushield-${GITHUB_SHA}.tar.gz" HEAD
+          {
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'JWT_EXPIRATION_SECONDS=3600\n'
+            printf 'ADMIN_USERNAME=%s\n' "$ADMIN_USERNAME"
+            printf 'ADMIN_PASSWORD=%s\n' "$ADMIN_PASSWORD"
+            printf 'MODUSHIELD_API_KEY=%s\n' "$MODUSHIELD_API_KEY"
+            printf 'MAX_REQUEST_SIZE_BYTES=8192\n'
+            printf 'RATE_LIMIT_CAPACITY=5\n'
+            printf 'RATE_LIMIT_WINDOW_SECONDS=10\n'
+          } > /tmp/modushield-test.env
+          chmod 600 /tmp/modushield-test.env
+
+      - name: Upload validated release
+        shell: bash
+        run: |
+          ssh "$TEST_USER@$TEST_HOST" "mkdir -p '$DEPLOY_PATH/releases/$GITHUB_SHA'"
+          scp "/tmp/modushield-${GITHUB_SHA}.tar.gz" "$TEST_USER@$TEST_HOST:$DEPLOY_PATH/releases/$GITHUB_SHA/source.tar.gz"
+          scp /tmp/modushield-test.env "$TEST_USER@$TEST_HOST:$DEPLOY_PATH/releases/$GITHUB_SHA/.env"
+
+      - name: Deploy with Docker Compose
+        shell: bash
+        run: |
+          ssh "$TEST_USER@$TEST_HOST" "set -eu
+            cd '$DEPLOY_PATH/releases/$GITHUB_SHA'
+            chmod 600 .env
+            tar -xzf source.tar.gz
+            docker compose -p modushield-test -f infra/docker-compose.yml --env-file .env up -d --build --remove-orphans
+            for attempt in \$(seq 1 60); do
+              if curl --fail --silent http://localhost:8080/health >/dev/null; then
+                ln -sfn '$DEPLOY_PATH/releases/$GITHUB_SHA' '$DEPLOY_PATH/current'
+                exit 0
+              fi
+              sleep 1
+            done
+            docker compose -p modushield-test -f infra/docker-compose.yml --env-file .env logs --no-color
+            exit 1"

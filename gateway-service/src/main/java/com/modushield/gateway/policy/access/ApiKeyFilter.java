@@ -23,7 +23,7 @@ import java.util.List;
  * Reglas implementadas:
  *  - MODUSHIELD_API_KEY se lee al iniciar; si esta vacia, el gateway falla explicitamente
  *    (no se permite arrancar aceptando todo).
- *  - /health esta exento de credencial (unicamente por el contrato de demostracion).
+ *  - /health y /api/products/** estan exentos: productos se autentica con JWT.
  *  - Se lee exactamente una cabecera X-API-Key y se compara con el valor configurado.
  *  - Ante ausencia o diferencia -> 401 INVALID_API_KEY via ErrorResponseWriter.
  *  - Nunca se registra la clave completa (ver AuditFilter, propiedad de Java D:
@@ -55,8 +55,8 @@ public class ApiKeyFilter implements GlobalFilter, Ordered, GatewayPolicy {
 
     @Override
     public int getOrder() {
-        // 30 = RouteMethodPolicy, 40 = ApiKeyFilter (ver nota de clase sobre el orden congelado)
-        return 40;
+        // JWT protege productos en 40; esta politica heredada protege ordenes en 45.
+        return 45;
     }
 
     @Override
@@ -73,7 +73,8 @@ public class ApiKeyFilter implements GlobalFilter, Ordered, GatewayPolicy {
         ServerHttpRequest request = exchange.getRequest();
         String path = normalize(request.getPath().value());
 
-        if (EXEMPT_PATHS.contains(path)) {
+        // Product operations use JWT authentication in JwtAuthenticationFilter.
+        if (EXEMPT_PATHS.contains(path) || isProductPath(path)) {
             return PolicyDecision.allow();
         }
 
@@ -101,6 +102,10 @@ public class ApiKeyFilter implements GlobalFilter, Ordered, GatewayPolicy {
             trimmed = trimmed.substring(0, trimmed.length() - 1);
         }
         return trimmed;
+    }
+
+    private boolean isProductPath(String path) {
+        return "/api/products".equals(path) || path.startsWith("/api/products/");
     }
 
     private PolicyDecision invalidKey() {

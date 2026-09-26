@@ -41,9 +41,12 @@ public class RouteMethodPolicy implements GlobalFilter, Ordered, GatewayPolicy {
 
     private static final Map<String, Set<HttpMethod>> ALLOWLIST = Map.of(
             "/health", Set.of(HttpMethod.GET),
-            "/api/products", Set.of(HttpMethod.GET),
             "/api/orders", Set.of(HttpMethod.POST)
     );
+    private static final Set<HttpMethod> PRODUCT_COLLECTION_METHODS = Set.of(
+            HttpMethod.GET, HttpMethod.POST);
+    private static final Set<HttpMethod> PRODUCT_ITEM_METHODS = Set.of(
+            HttpMethod.GET, HttpMethod.PUT, HttpMethod.DELETE);
 
     private final ErrorResponseWriter errorResponseWriter;
 
@@ -78,7 +81,10 @@ public class RouteMethodPolicy implements GlobalFilter, Ordered, GatewayPolicy {
         }
 
         String normalized = normalize(rawPath);
-        Set<HttpMethod> allowedMethods = ALLOWLIST.get(normalized);
+        Set<HttpMethod> allowedMethods = productMethods(normalized);
+        if (allowedMethods == null) {
+            allowedMethods = ALLOWLIST.get(normalized);
+        }
 
         if (allowedMethods == null) {
             return routeNotAllowed();
@@ -114,6 +120,17 @@ public class RouteMethodPolicy implements GlobalFilter, Ordered, GatewayPolicy {
             trimmed = trimmed.substring(0, trimmed.length() - 1);
         }
         return trimmed;
+    }
+
+    private Set<HttpMethod> productMethods(String path) {
+        if ("/api/products".equals(path)) {
+            return PRODUCT_COLLECTION_METHODS;
+        }
+        if (!path.startsWith("/api/products/")) {
+            return null;
+        }
+        String id = path.substring("/api/products/".length());
+        return !id.isBlank() && !id.contains("/") ? PRODUCT_ITEM_METHODS : null;
     }
 
     private PolicyDecision routeNotAllowed() {

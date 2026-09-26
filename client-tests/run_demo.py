@@ -45,12 +45,12 @@ class ScenarioResult:
 
 SCENARIO_COMMANDS = {
     "E01": "GET /health",
-    "E02": "GET /api/products + X-API-Key: <configured>",
+    "E02": "POST /auth/login; GET /api/products + Authorization: Bearer <admin JWT>",
     "E03": "GET /api/products",
-    "E04": "GET /api/products + X-API-Key: <incorrect>",
+    "E04": "GET /api/products + Authorization: Bearer <invalid JWT>",
     "E05": "GET /api/admin/status + X-API-Key: <configured>",
-    "E06": "DELETE /api/products + X-API-Key: <configured>",
-    "E07": "6 x GET /api/products in one rate window",
+    "E06": "POST /api/products + Authorization: Bearer <USER JWT>",
+    "E07": "6 x authenticated GET /api/products in one rate window",
     "E08": "POST /api/orders with client-tests/payload-8192.json",
     "E09": "POST /api/orders with client-tests/payload-8193.json",
     "E10": "docker compose stop demo-api; GET /api/products; restart demo-api",
@@ -78,6 +78,7 @@ def request(
     path: str,
     *,
     api_key: str | None = None,
+    bearer_token: str | None = None,
     body: bytes | None = None,
     request_id: str | None = None,
     timeout: float = 8.0,
@@ -85,6 +86,8 @@ def request(
     headers = {"Accept": "application/json"}
     if api_key is not None:
         headers["X-API-Key"] = api_key
+    if bearer_token is not None:
+        headers["Authorization"] = f"Bearer {bearer_token}"
     if request_id is not None:
         headers["X-Request-Id"] = request_id
     if body is not None:
@@ -131,6 +134,17 @@ class Runner:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.results: list[ScenarioResult] = []
+        self.admin_token: str | None = None
+
+    def login(self, username: str, password: str) -> str | None:
+        result = request(
+            self.args.base_url,
+            "POST",
+            "/auth/login",
+            body=json.dumps({"username": username, "password": password}).encode("utf-8"),
+        )
+        token = result.json_body().get("token")
+        return token if result.status == 200 and isinstance(token, str) else None
 
     def record(
         self,
@@ -235,7 +249,7 @@ class Runner:
                 self.args.base_url,
                 "GET",
                 "/api/products",
-                api_key=self.args.api_key,
+                bearer_token=self.admin_token,
                 timeout=2.0,
             )
             if result.status == 200:
@@ -251,25 +265,26 @@ class Runner:
             print("[WARN] Gateway did not become ready before the scenario timeout.")
 
         self.check_http("E01", "health", request(base_url, "GET", "/health"), 200)
+        self.admin_token = self.login(self.args.admin_username, self.args.admin_password)
         self.check_http(
             "E02",
             "valid products request",
-            request(base_url, "GET", "/api/products", api_key=api_key),
+            request(base_url, "GET", "/api/products", bearer_token=self.admin_token),
             200,
         )
         self.check_http(
             "E03",
-            "missing API key",
+            "missing JWT",
             request(base_url, "GET", "/api/products"),
             401,
-            "INVALID_API_KEY",
+            "INVALID_TOKEN",
         )
         self.check_http(
             "E04",
-            "invalid API key",
-            request(base_url, "GET", "/api/products", api_key="definitely-wrong"),
+            "invalid JWT",
+            request(base_url, "GET", "/api/products", bearer_token="definitely-wrong"),
             401,
-            "INVALID_API_KEY",
+            "INVALID_TOKEN",
         )
         self.check_http(
             "E05",
@@ -278,17 +293,32 @@ class Runner:
             403,
             "ROUTE_NOT_ALLOWED",
         )
+        user_name = f"e2e-user-{uuid4().hex[:8]}"
+        user_password = "e2e-password-123"
+        request(
+            base_url,
+            "POST",
+            "/auth/register",
+            body=json.dumps({"username": user_name, "password": user_password}).encode("utf-8"),
+        )
+        user_token = self.login(user_name, user_password)
         self.check_http(
             "E06",
-            "blocked method",
-            request(base_url, "DELETE", "/api/products", api_key=api_key),
-            405,
-            "METHOD_NOT_ALLOWED",
+            "USER write denied",
+            request(
+                base_url,
+                "POST",
+                "/api/products",
+                bearer_token=user_token,
+                body=b'{"id":"P-DENIED","name":"Denied","stock":1}',
+            ),
+            403,
+            "INSUFFICIENT_PERMISSIONS",
         )
 
         self.wait_for_rate_window()
         burst = [
-            request(base_url, "GET", "/api/products", api_key=api_key)
+            request(base_url, "GET", "/api/products", bearer_token=self.admin_token)
             for _ in range(6)
         ]
         statuses = [item.status for item in burst]
@@ -344,7 +374,7 @@ class Runner:
                     self.args.base_url,
                     "GET",
                     "/api/products",
-                    api_key=self.args.api_key,
+                    bearer_token=self.admin_token,
                 )
                 self.check_http(
                     "E10",
@@ -384,7 +414,7 @@ class Runner:
                 self.args.base_url,
                 "GET",
                 "/api/products",
-                api_key=self.args.api_key,
+                bearer_token=self.admin_token,
                 request_id=request_id,
             )
             if upstream_ready
@@ -396,15 +426,15 @@ class Runner:
             audit_request.status == 200
             and logs.returncode == 0
             and request_id in log_text
-            and self.args.api_key not in log_text
+            and (self.admin_token is None or self.admin_token not in log_text)
         )
         self.record(
             "E12",
             "audit event",
-            "requestId present and API key absent from logs",
+            "requestId present and JWT absent from logs",
             (
                 f"request_status={audit_request.status} request_id_found={request_id in log_text} "
-                f"api_key_found={self.args.api_key in log_text}"
+                f"jwt_found={self.admin_token is not None and self.admin_token in log_text}"
             ),
             safe_log,
         )
@@ -474,6 +504,8 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         "MODUSHIELD_API_KEY",
         "demo-key-change-me",
     )
+    args.admin_username = os.getenv("ADMIN_USERNAME") or env_file.get("ADMIN_USERNAME", "")
+    args.admin_password = os.getenv("ADMIN_PASSWORD") or env_file.get("ADMIN_PASSWORD", "")
     return args
 
 

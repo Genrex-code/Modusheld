@@ -32,7 +32,9 @@ class RouteMethodPolicyTest {
             "GET,   /api/admin/status,   false, 403",
             "POST,  /api/admin/status,   false, 403",
             "DELETE,/api/products,       false, 405",
-            "POST,  /api/products,       false, 405",
+            "POST,  /api/products,       true,  ",
+            "PUT,   /api/products/P-100, true,  ",
+            "GET,   /api/products/P-100, true,  ",
             "GET,   /api/orders,         false, 405",
             "GET,   /api/unknown,        false, 403",
             "GET,   /totally/not/mapped, false, 403"
